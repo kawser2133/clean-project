@@ -1,6 +1,5 @@
-﻿using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.ModelBinding;
+﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Caching.Memory;
 using Project.Core.Entities.General;
 using Project.Core.Interfaces.IServices;
 using X.PagedList;
@@ -11,11 +10,13 @@ namespace Project.UI.Controllers
     {
         private readonly ILogger<ProductController> _logger;
         private readonly IProductService _productService;
+        private readonly IMemoryCache _memoryCache;
 
-        public ProductController(ILogger<ProductController> logger, IProductService productService)
+        public ProductController(ILogger<ProductController> logger, IProductService productService, IMemoryCache memoryCache)
         {
             _logger = logger;
             _productService = productService;
+            _memoryCache = memoryCache;
         }
 
         // GET: ProductController
@@ -63,8 +64,26 @@ namespace Project.UI.Controllers
         {
             try
             {
-                var data = await _productService.GetProduct(id);
-                return View(data);
+                var product = new ProductViewModel();
+
+                // Attempt to retrieve the product from the cache
+                if (_memoryCache.TryGetValue($"Product_{id}", out ProductViewModel cachedProduct))
+                {
+                    product = cachedProduct;
+                }
+                else
+                {
+                    // If not found in cache, fetch the product from the data source
+                    product = await _productService.GetProduct(id);
+
+                    if (product != null)
+                    {
+                        // Cache the product with an expiration time of 10 minutes
+                        _memoryCache.Set($"Product_{id}", product, TimeSpan.FromMinutes(10));
+                    }
+                }
+
+                return View(product);
             }
             catch (Exception ex)
             {
@@ -117,8 +136,26 @@ namespace Project.UI.Controllers
         {
             try
             {
-                var data = await _productService.GetProduct(id);
-                return View(data);
+                var product = new ProductViewModel();
+
+                // Attempt to retrieve the product from the cache
+                if (_memoryCache.TryGetValue($"Product_{id}", out ProductViewModel cachedProduct))
+                {
+                    product = cachedProduct;
+                }
+                else
+                {
+                    // If not found in cache, fetch the product from the data source
+                    product = await _productService.GetProduct(id);
+
+                    if (product != null)
+                    {
+                        // Cache the product with an expiration time of 10 minutes
+                        _memoryCache.Set($"Product_{id}", product, TimeSpan.FromMinutes(10));
+                    }
+                }
+                
+                return View(product);
             }
             catch (Exception ex)
             {
@@ -148,6 +185,10 @@ namespace Project.UI.Controllers
                 try
                 {
                     await _productService.Update(model);
+
+                    // Remove data from cache by key
+                    _memoryCache.Remove($"Product_{model.Id}");
+                    
                     return RedirectToAction("Index");
                 }
                 catch (Exception ex)
@@ -166,6 +207,10 @@ namespace Project.UI.Controllers
             try
             {
                 await _productService.Delete(id);
+
+                // Remove data from cache by key
+                _memoryCache.Remove($"Product_{id}");
+
                 return RedirectToAction("Index");
             }
             catch (Exception ex)
